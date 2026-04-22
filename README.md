@@ -18,11 +18,11 @@ Folders:
   - renv/            Reproducible R package environment (used with renv.lock)
 
 Files:
-  - NCOMMS-25-62738-T_CodeForReview.Rproj   RStudio project file (recommended entry point)
+  - TNF_scRNAseq_analysis.Rproj             RStudio project file (recommended entry point)
   - renv.lock                               Locked package versions for reproducibility
   - libraries.tsv                           Library IDs and expected paths to 10x filtered matrices
   - hashtags.tsv                            Hashtag (HTO) feature to biological condition mapping
-  - README.txt                              This file
+  - README.md                               This file
 
 2) Overview of analysis scripts
 -------------------------------

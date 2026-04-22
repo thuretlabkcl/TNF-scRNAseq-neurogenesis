@@ -1,11 +1,11 @@
-README.txt
-==============
+# TNF scRNA-seq neurogenesis analysis
 
-Code used to reproduce the scRNA-seq (Seurat) analyses and figures for the publication:
-"TNF-α induces type I IFN signalling to suppress neurogenesis and recruit T cells."
+Code to reproduce the scRNA-seq (Seurat) analyses and figures for the publication:
 
-This repository contains analysis code, metadata, and a reproducible R environment. Processed input data are not included due to file size constraints.
+**"TNF-α induces type I IFN signalling to suppress neurogenesis and recruit T cells."**
 
+This repository contains analysis code, metadata, and a reproducible R environment.  
+Processed input data are not included due to file size constraints (see `data/README_data.txt`).
 
 1) Folder contents
 ------------------
@@ -84,7 +84,7 @@ Additional requirements:
 ---------------------------------------------
 
 Step 1: Open the project
-  - Open: NCOMMS-25-62738-T_CodeForReview.Rproj
+  - Open: TNF_scRNAseq_analysis.Rproj
 
 Step 2: Restore the R package environment (renv)
   In the R console (from the project root):

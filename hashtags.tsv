@@ -1,0 +1,10 @@
+library_id	hto_feature	bio_sample_id	tnf_ng_ml	duration_d	condition_label
+Lib1	HTO-AHH01-TotalSeqB	Prolif48h_Control	0	2	Control_48h
+Lib1	HTO-AHH02-TotalSeqB	Prolif48h_TNF0.1	0.1	2	TNF0.1_48h
+Lib1	HTO-AHH03-TotalSeqB	Prolif48h_TNF1	1	2	TNF1_48h
+Lib2	HTO-AHH02-TotalSeqB	Diff7d_Control	0	7	Control_7d
+Lib2	HTO-AHH03-TotalSeqB	Diff14d_Control	0	14	Control_14d
+Lib3	HTO-AHH02-TotalSeqB	Diff7d_TNF0.1	0.1	7	TNF0.1_7d
+Lib3	HTO-AHH03-TotalSeqB	Diff14d_TNF0.1	0.1	14	TNF0.1_14d
+Lib4	HTO-AHH02-TotalSeqB	Diff7d_TNF1	1	7	TNF1_7d
+Lib4	HTO-AHH03-TotalSeqB	Diff14d_TNF1	1	14	TNF1_14d

@@ -1,0 +1,575 @@
+---
+title: "01 Load and QC"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# If running interactively from within /scripts, move up to project root
+if (basename(getwd()) == "scripts") setwd("..")
+
+# Now we are in the project root
+knitr::opts_knit$set(root.dir = normalizePath(".")) 
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+
+source("scripts/00_setup.R")
+```
+
+Load data:
+
+```{r load-10x-matrices}
+lib_ids <- libraries$library_id
+tenx_list <- setNames(vector("list", length(lib_ids)), lib_ids)
+
+for (id in lib_ids) {
+  msg("Reading 10x data for ", id)
+  tenx_list[[id]] <- read_10x_for_library(id)
+}
+```
+
+```{r}
+prol.data <- tenx_list$Lib1
+diff_ctl.data <- tenx_list$Lib2
+diff_low_TNF.data <- tenx_list$Lib3
+diff_high_TNF.data<- tenx_list$Lib4
+```
+
+```{r}
+diff_ctl_rna <- diff_ctl.data$`Gene Expression`
+diff_ctl_hto <- diff_ctl.data$`Antibody Capture`
+
+diff_low_TNF_rna <- diff_low_TNF.data$`Gene Expression`
+diff_low_TNF_hto <- diff_low_TNF.data$`Antibody Capture`
+
+diff_high_TNF_rna <- diff_high_TNF.data$`Gene Expression`
+diff_high_TNF_hto <- diff_high_TNF.data$`Antibody Capture`
+
+prol_rna <- prol.data$`Gene Expression`
+prol_hto <- prol.data$`Antibody Capture`
+
+# Remove the first row (only differentiation)
+diff_ctl_hto <- diff_ctl_hto[-c(1),]
+diff_low_TNF_hto <- diff_low_TNF_hto[-c(1),]
+diff_high_TNF_hto <- diff_high_TNF_hto[-c(1),]
+
+# Find overlapping cell barcodes 
+join_diff_ctl <- intersect(colnames(diff_ctl_rna), colnames(diff_ctl_hto))
+join_diff_low <- intersect(colnames(diff_low_TNF_rna), colnames(diff_low_TNF_hto))
+join_diff_high <- intersect(colnames(diff_high_TNF_rna), colnames(diff_high_TNF_hto))
+joint_prol <- intersect(colnames(prol_rna), colnames(prol_hto))
+
+# Subset RNA and HTO counts by joint cell barcodes 
+diff_ctl_rna <- diff_ctl_rna[, join_diff_ctl]
+diff_ctl_hto <- as.matrix(diff_ctl_hto[, join_diff_ctl])
+
+diff_low_TNF_rna <- diff_low_TNF_rna[, join_diff_low]
+diff_low_TNF_hto <- as.matrix(diff_low_TNF_hto[, join_diff_low])
+
+diff_high_TNF_rna <- diff_high_TNF_rna[, join_diff_high]
+diff_high_TNF_hto <- as.matrix(diff_high_TNF_hto[, join_diff_high])
+
+prol_rna <- prol_rna[, joint_prol]
+prol_hto <- as.matrix(prol_hto[, joint_prol])
+
+# Confirm that the HTO have the correct names. Should be TotalSeqB1,2,and3
+rownames(diff_ctl_hto)
+rownames(diff_low_TNF_hto)
+rownames(diff_high_TNF_hto)
+rownames(prol_hto)
+```
+Create Seurat objects 
+
+```{r}
+# Setup Seurat object 
+dif_ctl_seurat <- CreateSeuratObject(counts = diff_ctl_rna, project = "Diff_control")
+dif_low_TNF_seurat <- CreateSeuratObject(counts = diff_low_TNF_rna, project = "Diff_low")
+dif_high_TNF_seurat <- CreateSeuratObject(counts = diff_high_TNF_rna, project = "Diff_high")
+prol_seurat <- CreateSeuratObject(counts = prol_rna, project = "Proliferation")
+```
+
+Adding, normalising, and demultiplexing HTO data
+
+```{r}
+# Create a new assay to store the HTO information and add this to the Seurat object
+dif_ctl_seurat[["HTO"]] <- CreateAssayObject(counts = diff_ctl_hto)
+dif_low_TNF_seurat[["HTO"]] <- CreateAssayObject(counts = diff_low_TNF_hto)
+dif_high_TNF_seurat[["HTO"]] <- CreateAssayObject(counts = diff_high_TNF_hto)
+prol_seurat[["HTO"]] <- CreateAssayObject(counts = prol_hto)
+```
+
+We can check that we now two assays - RNA and HTO
+
+```{r}
+# Validate that we now have two assays 
+Assays(dif_ctl_seurat)
+Assays(dif_low_TNF_seurat)
+Assays(dif_high_TNF_seurat)
+Assays(prol_seurat)
+```
+
+We can check the default assay
+
+```{r}
+# Check defualt assay
+DefaultAssay(dif_ctl_seurat)
+DefaultAssay(dif_low_TNF_seurat)
+DefaultAssay(dif_high_TNF_seurat)
+DefaultAssay(prol_seurat)
+```
+
+Now we normalise the HTO data
+
+```{r}
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+dif_ctl_seurat <- NormalizeData(dif_ctl_seurat, assay = "HTO", normalization.method = "CLR")
+dif_low_TNF_seurat <- NormalizeData(dif_low_TNF_seurat, assay = "HTO", normalization.method = "CLR")
+dif_high_TNF_seurat <- NormalizeData(dif_high_TNF_seurat, assay = "HTO", normalization.method = "CLR")
+prol_seurat <- NormalizeData(prol_seurat, assay = "HTO", normalization.method = "CLR")
+```
+
+And now demultipex the data:
+
+```{r}
+# Demultiplex cells based on HTO enrichment
+dif_ctl_seurat <- HTODemux(dif_ctl_seurat, assay = "HTO", positive.quantile = 0.99)
+dif_low_TNF_seurat <- HTODemux(dif_low_TNF_seurat, assay = "HTO", positive.quantile = 0.99)
+dif_high_TNF_seurat <- HTODemux(dif_high_TNF_seurat, assay = "HTO", positive.quantile = 0.99)
+prol_seurat <- HTODemux(prol_seurat, assay = "HTO", positive.quantile = 0.99)
+```
+
+We can visualize how many cells are classified as singlets, doublets and negative/ambiguous cells.
+
+```{r}
+# Global classification results
+table(dif_ctl_seurat$HTO_classification.global)
+```
+
+```{r}
+# Global classification results
+table(dif_low_TNF_seurat$HTO_classification.global)
+```
+
+```{r}
+# Global classification results
+table(dif_high_TNF_seurat$HTO_classification.global)
+```
+
+```{r}
+# Global classification results
+table(prol_seurat$HTO_classification.global)
+```
+
+Now merge the differentiation samples samples: 
+
+```{r}
+combined <- merge(dif_ctl_seurat, y = c(dif_low_TNF_seurat, dif_high_TNF_seurat), add.cell.ids = c("Control", "Low", 'High'), project = "TN")
+```
+
+Now we extract the singlets:
+
+```{r}
+Idents(combined) <- "HTO_classification.global"
+Idents(prol_seurat) <- "HTO_classification.global"
+
+# Extract the singlets
+combined <- subset(combined, idents = "Singlet")
+prol_seurat <- subset(prol_seurat, idents = "Singlet")
+```
+
+Adding easy to read labels (differentiation)
+
+```{r}
+metadata_combined <- combined@meta.data %>% 
+  mutate(sample.ID = case_when(
+            orig.ident == "Diff_control" & hash.ID == "HTO-AHH02-TotalSeqB" ~ "Differentiation control (7 days)",
+            orig.ident == "Diff_control" & hash.ID == "HTO-AHH03-TotalSeqB" ~ "Differentiation control (14 days)",
+            orig.ident == "Diff_low" & hash.ID == "HTO-AHH02-TotalSeqB" ~ "Differentiation low TNF (7 days)",
+            orig.ident == "Diff_low" & hash.ID == "HTO-AHH03-TotalSeqB" ~ "Differentiation low TNF (14 days)",
+            orig.ident == "Diff_high" & hash.ID == "HTO-AHH02-TotalSeqB" ~ "Differentiation high TNF (7 days)",
+            orig.ident == "Diff_high" & hash.ID == "HTO-AHH03-TotalSeqB" ~ "Differentiation high TNF (14 days)"))
+
+# Add new metadata
+combined@meta.data <- metadata_combined
+```
+Adding easy to read labels (proliferation)
+```{r}
+metadata_prol_seurat <- prol_seurat@meta.data %>% 
+  mutate(sample.ID = case_when(
+            orig.ident == "Proliferation" & hash.ID == "HTO-AHH01-TotalSeqB" ~ "Proliferation control",
+            orig.ident == "Proliferation" & hash.ID == "HTO-AHH02-TotalSeqB" ~ "Proliferation low TNF",
+            orig.ident == "Proliferation" & hash.ID == "HTO-AHH03-TotalSeqB" ~ "Proliferation high TNF"))
+
+# Add new metadata
+prol_seurat@meta.data <- metadata_prol_seurat
+```
+
+Adding easy to read labels for treatment (differentiation)
+
+```{r}
+
+combined$treatment <- NULL
+
+metadata_combined <- combined@meta.data %>% 
+  mutate(treatment = case_when(
+            orig.ident == "Diff_control" ~ "Control",
+            orig.ident == "Diff_low" ~ "Low TNF",
+            orig.ident == "Diff_high" ~ "High TNF"))
+
+# Add new metadata
+combined@meta.data <- metadata_combined
+
+```
+
+Adding easy to read labels for treatment (proliferation)
+
+```{r}
+
+prol_seurat$treatment <- NULL
+
+metadata_prol_seurat <- prol_seurat@meta.data %>% 
+  mutate(treatment = case_when(
+            orig.ident == "Proliferation" & hash.ID == "HTO-AHH01-TotalSeqB" ~ "Control",
+            orig.ident == "Proliferation" & hash.ID == "HTO-AHH02-TotalSeqB" ~ "Low TNF",
+            orig.ident == "Proliferation" & hash.ID == "HTO-AHH03-TotalSeqB" ~ "High TNF"))
+
+# Add new metadata
+prol_seurat@meta.data <- metadata_prol_seurat
+```
+
+Calculate novelty score:
+
+```{r}
+# Add number of genes per UMI for each cell to metadata
+combined$log10GenesPerUMI <- log10(combined$nFeature_RNA) / log10(combined$nCount_RNA)
+prol_seurat$log10GenesPerUMI <- log10(prol_seurat$nFeature_RNA) / log10(prol_seurat$nCount_RNA)
+```
+
+Perentage of reads that map to the mitochondrial genome
+
+```{r}
+combined[["percent.mt"]] <- PercentageFeatureSet(combined, pattern = "^MT-")
+prol_seurat[["percent.mt"]] <- PercentageFeatureSet(prol_seurat, pattern = "^MT-")
+```
+
+Plot the percentage of mitochondrial reads (differentiation): 
+```{r}
+
+combined$treatment <- factor(
+  combined$treatment,
+  levels = c("Control", "Low TNF", "High TNF")
+)
+
+differentiation <- VlnPlot(combined, features = 'percent.mt', group.by = 'treatment' )
+```
+
+Plot the percentage of mitochondrial reads (proliferation): 
+```{r}
+prol_seurat$treatment <- factor(
+  prol_seurat$treatment,
+  levels = c("Control", "Low TNF", "High TNF")
+)
+
+proliferation <- VlnPlot(prol_seurat, features = 'percent.mt', group.by = 'treatment' )
+```
+
+Metadata differentiation
+
+```{r}
+# Create metadata dataframe
+metadata_dif <- combined@meta.data
+
+# Add cell IDs to metadata
+metadata_dif$cells <- rownames(metadata_dif)
+
+# Rename columns
+metadata_dif <- metadata_dif %>%
+        dplyr::rename(seq_folder = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+
+# Add metadata back to Seurat object
+combined@meta.data <- metadata_dif
+```
+
+Metadata proliferation
+
+```{r}
+# Create metadata dataframe
+metadata_prol <- prol_seurat@meta.data
+
+# Add cell IDs to metadata
+metadata_prol$cells <- rownames(metadata_prol)
+
+# Rename columns
+metadata_prol <- metadata_prol %>%
+        dplyr::rename(seq_folder = orig.ident,
+                      nUMI = nCount_RNA,
+                      nGene = nFeature_RNA)
+
+# Add metadata back to Seurat object
+prol_seurat@meta.data <- metadata_prol
+```
+
+Dianostic plots - cell counts per sample
+
+
+```{r}
+# Visualize the number of cell counts per sample - DIF
+metadata_dif %>% 
+  	ggplot(aes(x=sample.ID, fill=sample.ID)) + 
+  	geom_bar() +
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells")
+```
+
+```{r}
+# Visualize the number of cell counts per sample - Prol
+metadata_prol %>% 
+  	ggplot(aes(x=sample.ID, fill=sample.ID)) + 
+  	geom_bar() +
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells")
+```
+
+Transcripts per cell - we can see that majority of our cells in both samples have 1000 UMIs or greater.
+
+```{r}
+# Visualize the number UMIs/transcripts per cell
+metadata_dif %>% 
+  	ggplot(aes(color=sample.ID, x=nUMI, fill= sample.ID)) + 
+  	geom_density(alpha = 0.2) + 
+    scale_x_continuous(limits = c(0,100000)) + 
+    geom_vline(xintercept = 1000)+ 
+    geom_vline(xintercept = 45000)
+```
+
+```{r}
+# Visualize the number UMIs/transcripts per cell
+metadata_prol %>% 
+  	ggplot(aes(color=sample.ID, x=nUMI, fill= sample.ID)) + 
+  	geom_density(alpha = 0.2) + 
+    scale_x_continuous(limits = c(0,100000)) + 
+    geom_vline(xintercept = 1000)+ 
+    geom_vline(xintercept = 45000)
+```
+Number of genes in each cell:
+
+```{r}
+# Visualize the distribution of genes detected per cell via histogram
+metadata_dif %>% 
+  	ggplot(aes(color=sample.ID, x=nGene, fill= sample.ID)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_continuous(limits = c(0,20000))   +
+    geom_vline(xintercept = 800)+ 
+    geom_vline(xintercept = 8000)
+```
+
+```{r}
+# Visualize the distribution of genes detected per cell via histogram
+metadata_prol %>% 
+  	ggplot(aes(color=sample.ID, x=nGene, fill= sample.ID)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_continuous(limits = c(0,20000))   +
+    geom_vline(xintercept = 800)+ 
+    geom_vline(xintercept = 8000)
+```
+
+Complexity
+
+```{r}
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI (novelty score)
+metadata_dif %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = sample.ID, fill=sample.ID)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.8)
+```
+
+```{r}
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI (novelty score)
+metadata_prol %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = sample.ID, fill=sample.ID)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.8)
+```
+
+Generally, we expect the novelty score to be above 0.80 for good quality cells. Looks god!
+
+```{r}
+# Visualize the distribution of mitochondrial gene expression detected per cell
+metadata_dif %>% 
+  	ggplot(aes(color=sample.ID, x=percent.mt, fill=sample.ID)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	geom_vline(xintercept = 15)
+```
+
+```{r}
+# Visualize the distribution of mitochondrial gene expression detected per cell
+metadata_prol %>% 
+  	ggplot(aes(color=sample.ID, x=percent.mt, fill=sample.ID)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	geom_vline(xintercept = 15)
+```
+
+```{r}
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata_dif %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=percent.mt)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~sample.ID)
+```
+
+```{r}
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata_prol %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=percent.mt)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~sample.ID)
+```
+Filtering - Number of cells before filtering:
+```{r}
+ncol(combined)
+ncol(prol_seurat)
+```
+
+```{r}
+# Filter out low quality cells using selected thresholds - these will change with experiment
+combined_cell_filtered <- subset(x = combined, 
+                         subset= (nUMI > 1000) & (nUMI < 45000) &
+                           (nGene > 800) & (nGene < 8000)&
+                           (log10GenesPerUMI > 0.80) & 
+                           (percent.mt < 15))
+
+prol_cell_filtered <- subset(x = prol_seurat, 
+                         subset= (nUMI > 1000) & (nUMI < 45000) &
+                           (nGene > 800) & (nGene < 8000)&
+                           (log10GenesPerUMI > 0.80) & 
+                           (percent.mt < 15))
+```
+
+```{r}
+ncol(combined_cell_filtered)
+ncol(prol_cell_filtered)
+```
+
+Gene level filtering:
+
+Within our data we will have many genes with zero counts. These genes can dramatically reduce the average expression for a cell and so we will remove them from our data. We will start by identifying which genes have a zero count in each cell:
+
+```{r} 
+##################### DIF
+combined_cell_filtered[["RNA"]] <- JoinLayers(combined_cell_filtered[["RNA"]])
+
+# Extract counts
+counts <- combined_cell_filtered[["RNA"]]$counts
+
+# Output a logical matrix specifying for each gene on whether or not there are more than zero counts per cell
+nonzero_dif <- counts > 0
+
+# Sums all TRUE values and returns TRUE if more than 5 TRUE values per gene
+keep_genes_dif <- Matrix::rowSums(nonzero_dif) >= 5
+
+# Only keeping those genes expressed in more than 5 cells
+filtered_counts_dif <- counts[keep_genes_dif, ]
+```
+
+
+```{r}
+# Extract counts
+counts <- prol_cell_filtered[["RNA"]]$counts
+
+# Output a logical matrix specifying for each gene on whether or not there are more than zero counts per cell
+nonzero_prol <- counts > 0
+
+# Sums all TRUE values and returns TRUE if more than 5 TRUE values per gene
+keep_genes_prol <- Matrix::rowSums(nonzero_prol) >= 5
+
+# Only keeping those genes expressed in more than 5 cells
+filtered_counts_prol <- counts[keep_genes_prol, ]
+```
+
+
+Finally, take those filtered counts and create a new Seurat object for downstream analysis.
+
+```{r}
+# Reassign to filtered Seurat object
+combined_cell_filtered <- CreateSeuratObject(filtered_counts_dif, meta.data = combined_cell_filtered@meta.data )
+prol_cell_filtered <- CreateSeuratObject(filtered_counts_prol, meta.data = prol_cell_filtered@meta.data)
+```
+
+Number of genes and cells after QC: 
+```{r}
+ncol(combined_cell_filtered)
+ncol(prol_cell_filtered)
+
+nrow(combined_cell_filtered)
+nrow(prol_cell_filtered)
+```
+
+
+```{r}
+# Save filtered subset to new metadata
+metadata_clean_dif <- combined_cell_filtered@meta.data
+metadata_clean_prol <- prol_cell_filtered@meta.data
+```
+
+Save QC'ed object: 
+
+```{r}
+save(combined_cell_filtered, file = "results/qc_diff_merged.RData")
+save(prol_cell_filtered, file = "results/prol_cell_filtered.RData")
+```
+
+Plot the QC'ed data:
+
+```{r}
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata_clean_dif %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=percent.mt)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~sample.ID)
+```
+
+
+```{r}
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata_clean_prol %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=percent.mt)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~sample.ID)
+```

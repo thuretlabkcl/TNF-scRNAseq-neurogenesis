@@ -1,0 +1,324 @@
+---
+title: "02 Normalisation and Clustering"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# If running interactively from within /scripts, move up to project root
+if (basename(getwd()) == "scripts") setwd("..")
+
+# Now we are in the project root
+knitr::opts_knit$set(root.dir = normalizePath(".")) 
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+
+source("scripts/00_setup.R")
+```
+
+# Load the quality controled data
+
+```{r}
+# load diff
+load(file = "results/qc_diff_merged.RData")
+
+# load prol
+load(file = "results/prol_cell_filtered.RData")
+```
+
+# Add type 
+
+```{r}
+combined_cell_filtered$type <-'Differentation'
+prol_cell_filtered$type <-'Proliferation'
+```
+
+# Merge
+
+```{r}
+obj_merged <- merge(combined_cell_filtered, y = prol_cell_filtered, add.cell.ids = c("Diff", "Prol"))
+```
+
+# Check
+
+```{r}
+class(obj_merged[['RNA']])
+Layers(obj_merged[['RNA']])
+```
+# Normalization and variance stabilization
+
+```{r}
+# Confirm: split layers should be gone or empty, and "counts" should exist
+Layers(obj_merged[["RNA"]])
+
+DefaultAssay(obj_merged) <- "RNA"   # SCTransform reads RNA counts
+
+obj_merged <- SCTransform(obj_merged, method = "glmGamPoi", verbose = FALSE)
+
+DefaultAssay(obj_merged) <- 'SCT'
+
+obj_merged1 <- obj_merged
+```
+
+# Run PCA
+```{r}
+obj_merged1 <- RunPCA(obj_merged1, dims=1:50)
+```
+
+```{r}
+obj_merged1 <- FindNeighbors(obj_merged1, dims = 1:50, verbose = FALSE)
+
+obj_merged1 <- FindClusters(obj_merged1, verbose = FALSE,resolution = c(0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2))
+
+obj_merged1 <- RunUMAP(obj_merged1, dims = 1:50, verbose = FALSE, seed.use = 42)
+
+obj_merged1 <- PrepSCTFindMarkers(obj_merged1, assay = "SCT", verbose = TRUE)
+
+#all_markers <- FindAllMarkers(obj_merged1,test.use = "wilcox")
+
+#all_markers %>% group_by(cluster) %>% dplyr::filter(avg_log2FC > 1) %>% slice_head(n = 10) %>% ungroup() -> top10
+```
+
+```{r}
+DimPlot(obj_merged1, split.by = 'sample.ID', ncol = 3)
+```
+
+```{r}
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.1", label = TRUE) + ggtitle("res = 0.1")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.2", label = TRUE) + ggtitle("res = 0.2")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.3", label = TRUE) + ggtitle("res = 0.3")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.4", label = TRUE) + ggtitle("res = 0.4")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.5", label = TRUE) + ggtitle("res = 0.5")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.6", label = TRUE) + ggtitle("res = 0.6")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.7", label = TRUE) + ggtitle("res = 0.7")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.8", label = TRUE) + ggtitle("res = 0.8")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.0.9", label = TRUE) + ggtitle("res = 0.9")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.1", label = TRUE) + ggtitle("res = 1")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.1.1", label = TRUE) + ggtitle("res = 1.1")
+DimPlot(obj_merged1, reduction = "umap", group.by = "SCT_snn_res.1.2", label = TRUE) + ggtitle("res = 1.2")
+
+```
+```{r}
+Idents(obj_merged1) <- 'SCT_snn_res.1.2'
+```
+
+# highlight clusters
+
+Cluster 0 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "0", highlight_color = "navy",background_color = "lightgray")
+```
+
+Cluster 1 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "1", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 2
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "2", highlight_color = "navy",background_color = "lightgray")
+```
+
+Cluster 3 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "3", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 4
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "4", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 5
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "5", highlight_color = "navy",background_color = "lightgray")
+```
+
+Cluster 6 -
+Cluster 6
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "6", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 7 
+
+
+Cluster 7
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "7", highlight_color = "navy",background_color = "lightgray")
+```
+
+Cluster 8 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "8", highlight_color = "navy",background_color = "lightgray")
+
+```
+
+Cluster 9 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "9", highlight_color = "navy",background_color = "lightgray")
+
+```
+Cluster 10 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "10", highlight_color = "navy",background_color = "lightgray")
+
+```
+Cluster 11
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "11", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 12
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "12", highlight_color = "navy",background_color = "lightgray")
+
+```
+
+Cluster 13
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "13", highlight_color = "navy",background_color = "lightgray")
+
+```
+
+Cluster 14 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "14", highlight_color = "navy",background_color = "lightgray")
+
+```
+
+Cluster 15 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "15", highlight_color = "navy",background_color = "lightgray")
+
+```
+Cluster 16 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "16", highlight_color = "navy",background_color = "lightgray")
+```
+
+Cluster 17
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "17", highlight_color = "navy",background_color = "lightgray")
+
+```
+Cluster 18
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "18", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 19 
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "19", highlight_color = "navy",background_color = "lightgray")
+```
+Cluster 20
+
+```{r}
+Cluster_Highlight_Plot(seurat_object = obj_merged1, cluster_name = "20", highlight_color = "navy",background_color = "lightgray")
+```
+# Subclustering
+
+Subclustering cluster 5
+
+```{r}
+subcluster <- FindSubCluster(obj_merged1, cluster = '5', graph.name = 'SCT_snn', resolution = 0.2, algorithm = 1)
+
+Idents(subcluster) <- 'sub.cluster'
+DimPlot(subcluster)
+
+# 5_0 - this is neuroblast
+Cluster_Highlight_Plot(seurat_object = subcluster, cluster_name = "5_0", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+
+# 5_1 - this is immature neurons 
+Cluster_Highlight_Plot(seurat_object = subcluster, cluster_name = "5_1", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+```
+Subclustering cluster 6 
+
+```{r}
+subcluster <- FindSubCluster(subcluster, cluster = '6', graph.name = 'SCT_nn', resolution = 0.2, algorithm = 1)
+
+Idents(subcluster) <- 'sub.cluster'
+DimPlot(subcluster)
+
+# 6_0 - 
+Cluster_Highlight_Plot(seurat_object = subcluster, cluster_name = "6_0", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+
+# 6_1 -
+Cluster_Highlight_Plot(seurat_object = subcluster, cluster_name = "6_1", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+```
+
+Subclustering cluster 9
+
+```{r}
+test1 <- subcluster
+test1 <- FindSubCluster(test1, cluster = '9', graph.name = 'SCT_nn', resolution = 0.4, algorithm = 1)
+
+Idents(test1) <- 'sub.cluster'
+DimPlot(test1)
+
+# 9_0 - 
+Cluster_Highlight_Plot(seurat_object = test1, cluster_name = "9_0", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+
+# 9_1 -
+Cluster_Highlight_Plot(seurat_object = test1, cluster_name = "9_1", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+
+Cluster_Highlight_Plot(seurat_object = test1, cluster_name = "9_2", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+
+Cluster_Highlight_Plot(seurat_object = test1, cluster_name = "9_3", highlight_color = "navy",background_color = "lightgray", split_seurat = TRUE)
+
+DimPlot(test1)
+```
+# Renaming clusters
+
+```{r}
+test2 <- test1
+
+test2 <- RenameIdents(object = test2,
+"0" = "Astro-like 1",
+"1" = "RGL-like 1",
+"2" = "Astro-like 1",
+"3" = "RGL-like 2",
+"4" = "IFN-responsive glial/progenitor-like",
+"5_0" = "Neuroblast-like",
+"5_1" = "Immature neuron-like",
+"6_0" = "Astro-like 1",
+"6_1" = "Astro-like 2",
+"7" = "IPC-like 1",
+"8" = "Astro-like 1",
+"9_0" = "RGL-like 1",
+"9_1" = "Astro-like 1",
+"9_2" = "IPC-like 1",
+"9_3" = "RGL-like 1",
+"10" = "IPC-like 4",
+"11" = "Reactive astrocyte-like",
+"12" = "IPC-like 2",
+"13" = "Astro-like 3",
+"14" = "IPC-like 2",
+"15" = "Wound healing-like",
+"16" = "IPC-like 3",
+"17" = "IPC-like 3",
+"18" = "Astro-like 1",
+"19" = "Astro-like 4",
+"20" = "Astro-like 1")
+
+DimPlot(test2)
+```
+
+```{r}
+seurat_pipeline_cluster <- test2
+saveRDS(seurat_pipeline_cluster, file.path(RESULTS_DIR, "seurat_pipeline_cluster.rds"))
+write.csv(Embeddings(seurat_pipeline_cluster, "umap"),file.path(RESULTS_DIR, "umap_coords_SCT_pca1-50_seed42.csv"))
+
+```

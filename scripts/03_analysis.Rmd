@@ -1,0 +1,1162 @@
+---
+title: "03 Analysis"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+# If running interactively from within /scripts, move up to project root
+# If running interactively from within /scripts, move up to project root
+if (basename(getwd()) == "scripts") setwd("..")
+
+# Now we are in the project root
+knitr::opts_knit$set(root.dir = normalizePath(".")) 
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+
+source("scripts/00_setup.R")
+```
+
+# Load the seurat object
+
+```{r}
+# load diff
+seurat_pipeline_cluster <- readRDS(file.path(RESULTS_DIR, "seurat_pipeline_cluster.rds"))
+
+seurat_pipeline_cluster$active_ident <- Idents(seurat_pipeline_cluster)
+```
+
+# generating figure 2b
+
+```{r}
+new_order <- c("Astro-like 1", "Astro-like 2", "Astro-like 3", "Astro-like 4", "RGL-like 1", "RGL-like 2", "IPC-like 1", "IPC-like 2", "IPC-like 3", "IPC-like 4", "Neuroblast-like", "Immature neuron-like", "IFN-responsive glial/progenitor-like", "Reactive astrocyte-like", "Wound healing-like")
+
+seurat_pipeline_cluster <- SetIdent(seurat_pipeline_cluster, value = factor(Idents(seurat_pipeline_cluster), levels = new_order))
+
+colors_UMAP <- c(
+  "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", 
+  "#E55AA4", "#43BDB2", "#EECAA4", "#050B8D", "#FF6347",  
+  "#9C73B4", "#B3D500", "#27601C", "#DC95E3", "#995D07")
+
+UMAP_plot <- DimPlot(seurat_pipeline_cluster, cols = colors_UMAP) + labs(x = "UMAP1", y = "UMAP2")
+
+ggsave(filename = "Fig2b.pdf", path =FIGURES_DIR , plot = UMAP_plot, width = 200, height = 100, device = cairo_pdf, units = "mm")
+```
+
+# generating figure 2c
+
+Add timepoint to metadata:
+
+```{r}
+# Make a new metadata column
+seurat_pipeline_cluster$timepoint <- 'Time'
+
+# Fix meta data
+metadata_seurat_pipeline_cluster <- seurat_pipeline_cluster@meta.data %>% 
+  mutate(Time = case_when(
+            sample.ID == "Proliferation control" ~ "Proliferation (2 days)",
+            sample.ID == "Proliferation low TNF" ~ "Proliferation (2 days)",
+            sample.ID == "Proliferation high TNF" ~ "Proliferation (2 days)",
+            sample.ID == "Differentiation control (7 days)" ~ "Differentiation (7 days)",
+            sample.ID == "Differentiation low TNF (7 days)" ~ "Differentiation (7 days)",
+            sample.ID == "Differentiation high TNF (7 days)" ~ "Differentiation (7 days)",
+            sample.ID == "Differentiation control (14 days)" ~ "Differentiation (14 days)",
+            sample.ID == "Differentiation low TNF (14 days)" ~ "Differentiation (14 days)",
+            sample.ID == "Differentiation high TNF (14 days)" ~ "Differentiation (14 days)"))
+
+# Add new metadata
+seurat_pipeline_cluster@meta.data <- metadata_seurat_pipeline_cluster
+```
+Add treatment column
+
+```{r}
+# Make a new metadata column
+seurat_pipeline_cluster$treatment <- NULL
+
+# Fix meta data
+metadata_seurat_pipeline_cluster <- seurat_pipeline_cluster@meta.data %>% 
+  mutate(treatment = case_when(
+            sample.ID == "Proliferation control" ~ "Control",
+            sample.ID == "Proliferation low TNF" ~ "Low TNF",
+            sample.ID == "Proliferation high TNF" ~ "High TNF",
+            sample.ID == "Differentiation control (7 days)" ~ "Control",
+            sample.ID == "Differentiation low TNF (7 days)" ~ "Low TNF",
+            sample.ID == "Differentiation high TNF (7 days)" ~ "High TNF",
+            sample.ID == "Differentiation control (14 days)" ~ "Control",
+            sample.ID == "Differentiation low TNF (14 days)" ~ "Low TNF",
+            sample.ID == "Differentiation high TNF (14 days)" ~ "High TNF"))
+
+# Add new metadata
+seurat_pipeline_cluster@meta.data <- metadata_seurat_pipeline_cluster
+```
+Take a look at number of cells belonging to each cluster by line and timepoint. For this we make a contingency table.
+
+```{r}
+Prol <- subset(seurat_pipeline_cluster, Time =="Proliferation (2 days)")
+Dif7 <- subset(seurat_pipeline_cluster,Time == "Differentiation (7 days)")
+Dif14 <- subset(seurat_pipeline_cluster,Time == "Differentiation (14 days)")
+
+Idents(Prol) <- "active_ident"
+Idents(Dif7) <- "active_ident"
+Idents(Dif14) <- "active_ident"
+```
+
+Look at cell frequencies in each sample:
+
+```{r}
+table(Idents(Prol), Prol$treatment) 
+table(Idents(Dif7), Dif7$treatment)
+table(Idents(Dif14), Dif14$treatment)
+
+to_df <- function(df) {
+  df %>% 
+  as.data.frame() %>%
+  as_tibble() %>% 
+  dplyr::rename("active_ident"=Var1,"treatment"=Var2,"count"=Freq) %>% 
+  arrange(active_ident)
+}
+```
+
+Turn frequency tables into tidy data
+
+```{r}
+Prol <- table(Idents(Prol), Prol$treatment) %>%
+  to_df() %>% 
+  mutate(sample = "2-Day Proliferation") 
+
+Dif7 <- table(Idents(Dif7), Dif7$treatment) %>% 
+  to_df() %>% 
+  mutate(sample = "7-Day Differentiation")
+
+Dif14 <- table(Idents(Dif14), Dif14$treatment) %>% 
+  to_df() %>% 
+  mutate(sample = "14-Day Differentiation")
+
+my_data <- Prol %>% 
+  bind_rows(Dif7) %>% 
+  bind_rows(Dif14) %>% 
+  mutate(active_ident = factor(active_ident,
+                            levels=c("Astro-like 1","Astro-like 2","Astro-like 3","Astro-like 4","RGL-like 1","RGL-like 2","IPC-like 1","IPC-like 2", "IPC-like 3","IPC-like 4", 'Neuroblast-like', 'Immature neuron-like', 'IFN-responsive glial/progenitor-like', 'Reactive astrocyte-like', 'Wound healing-like'))) %>% 
+  mutate(sample = factor(sample,levels = c("2-Day Proliferation",
+                                         "7-Day Differentiation",
+                                         "14-Day Differentiation")))
+
+```
+
+Make stacked bar plots of cell type proportions
+
+```{r}
+my_data <- my_data %>%
+  mutate(treatment = factor(treatment, levels = c("High TNF", "Low TNF", "Control")))
+
+bar_plot <- my_data %>%
+ggplot(aes(y=count,x=treatment,fill=active_ident)) + 
+  geom_bar(position="fill",stat="identity") +
+  coord_flip() +
+  scale_fill_manual(values = colors_UMAP,name="") +
+  scale_y_continuous(expand = c(0,0),
+                     labels = percent_format()) +
+  facet_wrap(~sample,ncol = 1) +
+  theme(axis.line.y = element_blank(),
+        axis.text.y = element_text(size = 10, color = "black", face = "bold"),
+        axis.ticks.y = element_blank(),
+        strip.text = element_text(size = 10,face = "bold")) +
+  labs(x="",y="Cluster Proportion") +
+  theme(plot.margin = margin(0,1,0.5,0, "cm"),panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(),plot.background = element_blank() )
+
+ggsave(filename = "Fig2c.pdf", path =FIGURES_DIR , plot = bar_plot, width = 200, height = 120, device = cairo_pdf, units = "mm")
+
+```
+
+# generating figure 2d
+```{r}
+all_markers <- c('AQP4','S100B', 'GFAP', 'BCAN', 'CLU', 'ID4', 'FABP7', 'PTN', 'CDH4', 'CD44' ,'HES1','STMN1', 'MKI67', 'HMGB2','DCX','IGFBPL1' ,'PROX1','MAP2', 'NRXN3', 'TUBB3','SYNPR', 'DSCAM', 'CALB2')
+
+dotplot <- DotPlot_scCustom(seurat_pipeline_cluster,features = all_markers,  x_lab_rotate = TRUE) 
+
+ggsave(filename = "Fig2d.pdf", path =FIGURES_DIR , plot = dotplot, width = 240, height = 120, device = cairo_pdf, units = "mm")
+```
+
+
+#generating figure 2e
+```{r}
+human_genes <- read.csv("scripts/NIHMS1815814-supplement-1815814_Tab_4.csv")
+
+top_twenty <- human_genes[1:20, ]
+top_twenty_genes <- top_twenty$Gene
+
+seurat_pipeline_cluster <- AddModuleScore(
+  seurat_pipeline_cluster,
+  features = list(top_twenty_genes),
+  name = c('Immature DG cell signature'),
+  search = TRUE,
+  )
+
+Immature_DG <- FeaturePlot_scCustom(
+  seurat_pipeline_cluster,
+  features     = "Immature DG cell signature1",          
+  colors_use   = viridis_plasma_dark_high,    
+  na_color     = "grey90",                    
+  na_cutoff    = 0.15)    + xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() + ggtitle('Human imGCs signature')                         
+
+ggsave(filename = "Fig2e.pdf", path =FIGURES_DIR , plot = Immature_DG, width = 200, height =200, device = cairo_pdf, units = "mm")
+
+```
+
+
+# generating figure 2f-g
+
+```{r}
+DefaultAssay(seurat_pipeline_cluster) <- "SCT"
+seurat_pipeline_cluster <- PrepSCTFindMarkers(seurat_pipeline_cluster)
+markers_clusters <-FindAllMarkers(seurat_pipeline_cluster,assay = 'SCT',  only.pos = TRUE, min.pct=0.25, test.use = "wilcox", logfc.threshold = 0.25)
+markers_clusters %>% group_by(cluster) %>% arrange(desc(avg_log2FC)) %>% slice_head(n = 20) %>% ungroup() -> top20
+```
+
+```{r}
+# get topp 100 genes from neuroblast and immature neuronal cluster 
+neuroblast_top_100 <- markers_clusters %>% filter(cluster == 'Neuroblast-like') %>% arrange(desc(avg_log2FC)) %>% top_n(100, wt = avg_log2FC)
+neuro_top_100 <- markers_clusters %>% filter(cluster == 'Immature neuron-like') %>% arrange(desc(avg_log2FC)) %>% top_n(100, wt = avg_log2FC)
+
+# getting the genes
+neuroblast_genes <- neuroblast_top_100$gene
+neuro_genes <- neuro_top_100$gene
+
+# convert gene symbols to entrez IDs 
+entrez_ids_neuroblast <- bitr(neuroblast_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+
+entrez_ids_neuro<- bitr(neuro_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+```
+
+```{r}
+# run GO enrinchment - BP
+go_results_neuroblasts <- enrichGO(gene = entrez_ids_neuroblast$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+go_results_neuro <- enrichGO(gene = entrez_ids_neuro$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+```
+
+Make dotplots 
+
+```{r}
+neuroblast_bb <- dotplot(go_results_neuroblasts, showCategory = 15)
+ggsave(filename = "Fig2f.pdf", path = FIGURES_DIR , plot = neuroblast_bb, width = 200, height =200, device = cairo_pdf, units = "mm")
+```
+
+```{r}
+neuro_bb <-dotplot(go_results_neuro, showCategory = 15)
+ggsave(filename = "Fig2g.pdf", path = FIGURES_DIR , plot = neuro_bb, width = 200, height =200, device = cairo_pdf, units = "mm")
+```
+
+# generating figure 2h
+
+```{r}
+# Step 1: Subset to 7d and 14d differentiation samples
+diff_cells <- subset(seurat_pipeline_cluster, subset = Time %in% c("Differentiation (7 days)", "Differentiation (14 days)"))
+
+# Step 2: Subset only neuroblast and immature neurons
+target_cells <- diff_cells@meta.data %>%filter(active_ident %in% c("Neuroblast-like", "Immature neuron-like"))
+
+# Step 3: Count cells per treatment and type
+counts <- target_cells %>%
+  group_by(treatment, active_ident) %>%
+  summarise(n = n(), .groups = "drop")
+
+# Step 4: Get total number of cells per condition (in differentiation samples)
+total_per_condition <- diff_cells@meta.data %>%
+  group_by(treatment) %>%
+  summarise(total = n(), .groups = "drop")
+
+# Step 5: Merge counts and total, compute percentages
+counts <- left_join(counts, total_per_condition, by = "treatment") %>%
+  mutate(percent = (n / total) * 100)
+
+counts$treatment <- factor(counts$treatment, levels = c("Control", "Low TNF", "High TNF"))
+
+# Step 6: Plot
+treatment_neurogenesis <- ggplot(counts, aes(x = treatment, y = percent, fill = active_ident)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(x = "Treatment", y = "Percentage of cells in neurogenic clusters", fill = "Cluster") +
+  scale_fill_manual(values = c("Neuroblast-like" = "#9C73B4", "Immature neuron-like" = "#B3D500")) +
+  theme_minimal() + theme(
+    axis.text.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")) 
+
+ggsave(filename = "Fig2h.pdf", path = FIGURES_DIR , plot = treatment_neurogenesis, width = 200, height =200, device = cairo_pdf, units = "mm")
+```
+
+# generate figure 3a
+
+Generate heatmap comparing RGL vs. RGL immune 
+```{r}
+# Use then SCT assay - find markers expressed in minimum 25% of cells in the cluster
+RGL_vs_RGL_immune <-FindMarkers(seurat_pipeline_cluster,ident.1 = 'RGL-like 2', ident.2 = 'RGL-like 1', assay = 'SCT',  only.pos = TRUE, min.pct=0.25, test.use = "wilcox", logfc.threshold = 0.25) %>% rownames_to_column(var = "gene")
+
+# get the data from the top 40 genes in each cluster based on avg_log2FC
+RGL_vs_RGL_immune %>% arrange(desc(avg_log2FC)) %>% slice_head(n = 40) %>% ungroup() -> top40_RGL_vs_RGL_immune
+
+RGL_heatmap_genes <- top40_RGL_vs_RGL_immune$gene
+
+# subset the seurat object 
+RGL_all <- subset(seurat_pipeline_cluster, idents = c('RGL-like 2', 'RGL-like 1'))
+
+# colors to use 
+colors_RGL_heatmap <- c( "#0072B2", "#E55AA4")
+
+# do heatmap - genes expressed in 25% of cells
+heatmap_RGL_vs_RGL_immune <- DoHeatmap(RGL_all, features = RGL_heatmap_genes, assay = 'SCT', slot = "scale.data",label = FALSE, group.colors = colors_RGL_heatmap)
+
+# save the plot 
+ggsave(filename = "Fig3a.pdf", path = FIGURES_DIR , plot = heatmap_RGL_vs_RGL_immune, width = 200, height =200, device = cairo_pdf, units = "mm")
+```
+# generate figure 3b
+
+```{r}
+# Use then SCT assay - find markers expressed in minimum 25% of cells in the cluster
+IPC_TNF_vs_IPCs <-FindMarkers(seurat_pipeline_cluster,ident.1 = 'IPC-like 4', ident.2 = c('IPC-like 1', 'IPC-like 2', 'IPC-like 3'), assay = 'SCT',  only.pos = TRUE, min.pct=0.25, test.use = "wilcox", logfc.threshold = 0.25) %>% rownames_to_column(var = "gene")
+
+# get the data from the top 40 genes in each cluster based on avg_log2FC
+IPC_TNF_vs_IPCs %>% arrange(desc(avg_log2FC)) %>% slice_head(n = 40) %>% ungroup() -> topIPC_TNF_vs_IPCs
+
+IPC_heatmap_genes <- topIPC_TNF_vs_IPCs$gene
+
+# subset the seurat object 
+IPC_all <- subset(seurat_pipeline_cluster, idents = c('IPC-like 1', 'IPC-like 2', 'IPC-like 3', 'IPC-like 4'))
+
+# colors to use 
+colors_IPC_heatmap <- c("#43BDB2", "#EECAA4", "#050B8D", "#FF6347")
+
+# do heatmap - genes expressed in 25% of cells
+heatmap_IPC_vs_IPC_immune <- DoHeatmap(IPC_all, features = IPC_heatmap_genes, assay = 'SCT', slot = "scale.data",label = FALSE, group.colors = colors_IPC_heatmap)
+
+# save the plot 
+ggsave(filename = "Fig3b.pdf", path = FIGURES_DIR , plot = heatmap_IPC_vs_IPC_immune, width = 200, height =200, device = cairo_pdf, units = "mm")
+```
+
+# generate figure 3c
+
+```{r}
+IFN_genes <- c('MX1', 'ISG15', 'OAS1', 'OAS2', 'IFI6', 'IFI27', 'IFI35','IFI44', 'IFI44L','IFI16', 'IFIT1', 'IFIT3', 'STAT1', 'STAT2', 'TRIM22', 'BST2', 'CXCL10','IFITM1', 'IFITM3', 'B2M', 'IL32', 'HLA-B')
+
+IFN_dotplot <-  DotPlot_scCustom(seurat_pipeline_cluster,features = IFN_genes,  x_lab_rotate = TRUE) 
+
+ggsave(filename = "Fig3c.pdf", path = FIGURES_DIR , plot = IFN_dotplot, width = 325, height =125, device = cairo_pdf, units = "mm")
+```
+
+# generate figure d-f
+
+```{r}
+IFN_astroglial_top_100 <- markers_clusters %>% filter(cluster == 'IFN-responsive glial/progenitor-like') %>% arrange(desc(avg_log2FC)) %>% top_n(100, wt = avg_log2FC)
+
+reactive_astro_top_100 <- markers_clusters %>% filter(cluster == 'Reactive astrocyte-like') %>% arrange(desc(avg_log2FC)) %>% top_n(100, wt = avg_log2FC)
+
+wound_healing_top_100 <- markers_clusters %>% filter(cluster == 'Wound healing-like') %>% arrange(desc(avg_log2FC)) %>% top_n(100, wt = avg_log2FC)
+
+# getting the genes
+IFN_astroglial_top_100_genes <- IFN_astroglial_top_100$gene
+reactive_astro_top_100_genes <- reactive_astro_top_100$gene
+wound_healing_top_100_genes <- wound_healing_top_100$gene
+
+# convert gene symbols to entrez IDs 
+entrez_ids_IFN_astroglial_top_100_genes <- bitr(IFN_astroglial_top_100_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+
+entrez_ids_reactive_astro_top_100_genes<- bitr(reactive_astro_top_100_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+
+entrez_ids_wound_healing_top_100_genes<- bitr(wound_healing_top_100_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+```
+
+
+Go enrichment - BP - biologial process 
+```{r}
+# run GO enrinchment - BP
+go_results_IFN_astroglial <- enrichGO(gene = entrez_ids_IFN_astroglial_top_100_genes$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+go_results_reactive_astro <- enrichGO(gene = entrez_ids_reactive_astro_top_100_genes$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+go_results_wound_healing <- enrichGO(gene = entrez_ids_wound_healing_top_100_genes$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+```
+Dot plots:
+
+```{r}
+go_results_IFN_astroglial_bb <- dotplot(go_results_IFN_astroglial, showCategory = 15) 
+ggsave(filename = "Fig3d.pdf", path = FIGURES_DIR , plot = go_results_IFN_astroglial_bb, width = 150, height =250, device = cairo_pdf, units = "mm")
+```
+
+```{r}
+go_results_reactive_astro_bb <- dotplot(go_results_reactive_astro, showCategory = 15) 
+ggsave(filename = "Fig3e.pdf", path = FIGURES_DIR , plot = go_results_reactive_astro_bb, width = 150, height =300, device = cairo_pdf, units = "mm")
+```
+
+```{r}
+go_results_wound_healing_bb <- dotplot(go_results_wound_healing, showCategory = 15) 
+ggsave(filename = "Fig3f.pdf", path = FIGURES_DIR , plot = go_results_wound_healing_bb, width = 150, height =200, device = cairo_pdf, units = "mm")
+```
+
+# generate figure 3g
+
+IFN-beta NSC signature - https://www.embopress.org/doi/full/10.15252/emmm.202216434 
+
+```{r}
+IFN_B_response_genes_df <- read.csv("scripts/NSC_IFN_b_genes.csv")
+IFN_B_response_genes <- IFN_B_response_genes_df$Genes
+
+seurat_pipeline_cluster <- AddModuleScore(
+  seurat_pipeline_cluster,
+  features = list(IFN_B_response_genes),
+  name = c('NSC IFN-β signature'),
+  search = TRUE,
+)
+
+IFN_signature <- FeaturePlot_scCustom(
+  seurat_pipeline_cluster,
+  features     = "NSC IFN-β signature1",            # your module score metadata
+  colors_use   = viridis_plasma_dark_high,     # or your preferred gradient
+  na_color     = "grey90",                     # color for low module scores
+  na_cutoff    = 0.05)    + xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() + ggtitle('NSC IFN-β signature')                         # everything ≤ 0 is grey; >0 uses gradient
+
+ggsave(filename = "Fig3g.pdf", path = FIGURES_DIR , plot = IFN_signature, width = 325, height =125, device = cairo_pdf, units = "mm")
+```
+
+
+
+# generate figure 3h
+
+```{r}
+# generate net 
+net <- get_collectri(organism='human', split_complexes=FALSE)
+
+# Extract the normalized log-transformed counts
+mat <- seurat_pipeline_cluster[["SCT"]]$data
+
+# Run ulm
+acts <- run_ulm(mat=mat, net=net, .source='source', .target='target',.mor='mor', minsize = 5)
+```
+
+
+```{r}
+# Extract ulm and store it in tfsulm 
+seurat_pipeline_cluster[['tfsulm']] <- acts %>%
+  pivot_wider(id_cols = 'source', names_from = 'condition',
+              values_from = 'score') %>%
+  column_to_rownames('source') %>%
+  Seurat::CreateAssayObject(.)
+
+# Change assay
+DefaultAssay(object = seurat_pipeline_cluster) <- "tfsulm"
+
+# Scale the data
+seurat_pipeline_cluster <- ScaleData(seurat_pipeline_cluster)
+seurat_pipeline_cluster@assays$tfsulm@data <- seurat_pipeline_cluster@assays$tfsulm@scale.data
+```
+
+
+```{r}
+n_tfs <- 50
+
+Idents(seurat_pipeline_cluster) <- seurat_pipeline_cluster$active_ident
+
+# Extract activities from object as a long dataframe
+df <- t(as.matrix(seurat_pipeline_cluster@assays$tfsulm$data)) %>%
+  as.data.frame() %>%
+  mutate(cluster = Idents(seurat_pipeline_cluster)) %>%
+  pivot_longer(cols = -cluster, names_to = "source", values_to = "score") %>%
+  group_by(cluster, source) %>%
+  summarise(mean = mean(score))
+
+# Get top tfs with more variable means across clusters
+tfs <- df %>%
+  group_by(source) %>%
+  summarise(std = sd(mean)) %>%
+  arrange(-abs(std)) %>%
+  head(n_tfs) %>%
+  pull(source)
+
+# Subset long data frame to top tfs and transform to wide matrix
+top_acts_mat <- df %>%
+  filter(source %in% tfs) %>%
+  pivot_wider(id_cols = 'cluster', names_from = 'source',
+              values_from = 'mean') %>%
+  column_to_rownames('cluster') %>%
+  as.matrix()
+
+# Choose color palette
+palette_length = 100
+my_color = colorRampPalette(c("Darkblue", "white","red"))(palette_length)
+
+my_breaks <- c(seq(-3, 0, length.out=ceiling(palette_length/2) + 1),
+               seq(0.05, 3, length.out=floor(palette_length/2)))
+
+mat2 <- t(top_acts_mat)
+
+# Plot
+pheatmap(mat2,border_color = NA, color=my_color, breaks = my_breaks, filename = 'figures/fig3h.pdf',width  = 7,height = 10)
+```
+
+# extended data fig 1a
+
+```{r}
+DefaultAssay(object = seurat_pipeline_cluster) <- "SCT"
+
+Idents(seurat_pipeline_cluster) <- 'sample.ID'
+
+seurat_pipeline_cluster$sample.ID <- factor(seurat_pipeline_cluster$sample.ID , levels = c("Proliferation control","Proliferation low TNF","Proliferation high TNF","Differentiation control (7 days)","Differentiation low TNF (7 days)","Differentiation high TNF (7 days)","Differentiation control (14 days)","Differentiation low TNF (14 days)","Differentiation high TNF (14 days)"))
+
+
+Idents(seurat_pipeline_cluster) <- 'active_ident'
+
+new_order <- c("Astro-like 1", "Astro-like 2", "Astro-like 3", "Astro-like 4", "RGL-like 1", "RGL-like 2", "IPC-like 1", "IPC-like 2", "IPC-like 3", "IPC-like 4", "Neuroblast-like", "Immature neuron-like", "IFN-responsive glial/progenitor-like", "Reactive astrocyte-like", "Wound healing-like")
+
+seurat_pipeline_cluster <- SetIdent(seurat_pipeline_cluster, value = factor(Idents(seurat_pipeline_cluster), levels = new_order))
+
+sample_ID_plot <- DimPlot_scCustom(
+  seurat_pipeline_cluster,
+  label = FALSE,
+  split.by = "sample.ID",
+  repel = TRUE,
+  num_columns = 3,
+  split_seurat = TRUE,
+  colors_use = colors_UMAP,
+  pt.size = 0.1
+) +
+  xlab("UMAP1") +
+  ylab("UMAP2") +
+  NoAxes() +
+  theme(
+    strip.text = element_text(size =9),  # 👈 changes panel title size
+    legend.title = element_text(size = 5))
+
+ggsave(filename = "extended_fig1a.pdf", path = FIGURES_DIR , plot = sample_ID_plot, width = 325, height =125, device = cairo_pdf, units = "mm")
+```
+
+# extended data fig 1b
+
+```{r}
+# subset prol data
+prol <- subset(seurat_pipeline_cluster, subset = Time == 'Proliferation (2 days)')
+
+prol$treatment <- factor(x = prol$treatment, levels = c('Control','Low TNF','High TNF'))
+
+Idents(prol) <- 'treatment'
+
+# violin plots 
+ISG15 <- VlnPlot(prol, features = 'ISG15')
+IFI27 <- VlnPlot(prol, features = 'IFI27')
+IFI6 <- VlnPlot(prol, features = 'IFI6')
+IFITM3 <- VlnPlot(prol, features = 'IFITM3')
+
+dose_dependent1 <- ISG15 |IFI27
+dose_dependent2 <- IFI6 |IFITM3
+
+ggsave(filename = "extended_fig1b1.pdf", path = FIGURES_DIR , plot = dose_dependent1, width = 325, height =125, device = cairo_pdf, units = "mm")
+ggsave(filename = "extended_fig1b2.pdf", path = FIGURES_DIR , plot = dose_dependent2, width = 325, height =125, device = cairo_pdf, units = "mm")
+```
+
+# extended data fig 1c
+
+```{r}
+RGLs_markers <-FindMarkers(seurat_pipeline_cluster,ident.1 = 'RGL-like 2', ident.2 = 'RGL-like 1', assay = 'SCT',  only.pos = TRUE, min.pct=0.25, test.use = "wilcox", logfc.threshold = 0.25) %>% rownames_to_column(var = "gene")
+
+RGLs_markers %>% arrange(desc(avg_log2FC)) %>% slice_head(n = 100) %>% ungroup() -> RGL_results
+
+RGL_results_genes <- RGL_results$gene
+
+# convert gene symbols to entrez IDs 
+RGL_entrez <- bitr(RGL_results_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+
+RGL_BP <- enrichGO(gene = RGL_entrez$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+RGL_downregulated_tnf <- dotplot(RGL_BP, showCategory = 15)
+
+ggsave(filename = "extended_fig1c.pdf", path = FIGURES_DIR , plot = RGL_downregulated_tnf, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# extended data fig 1d
+
+```{r}
+IPC_down_TNF <-FindMarkers(seurat_pipeline_cluster,ident.1 = 'IPC-like 4', ident.2 = c('IPC-like 1', 'IPC-like 2', 'IPC-like 3'), assay = 'SCT',  only.pos = TRUE, min.pct=0.25, test.use = "wilcox", logfc.threshold = 0.25) %>% rownames_to_column(var = "gene")
+
+IPC_down_TNF %>% arrange(desc(avg_log2FC)) %>% slice_head(n = 100) %>% ungroup() -> IPC_down_TNF_top_100
+
+IPC_down_TNF_top_100_genes <- IPC_down_TNF_top_100$gene
+
+IPC_TNF_down <- bitr(IPC_down_TNF_top_100_genes, 
+                   fromType = "SYMBOL",
+                   toType = "ENTREZID", 
+                   OrgDb = org.Hs.eg.db)
+
+IPC_TNF_down_BP <- enrichGO(gene = IPC_TNF_down$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "BP",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+extended_fig1d <- dotplot(IPC_TNF_down_BP, showCategory = 15)
+
+ggsave(filename = "extended_fig1d.pdf", path = FIGURES_DIR , plot = extended_fig1d, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# extended data fig 1e-f
+
+```{r}
+DefaultAssay(object = seurat_pipeline_cluster) <- "tfsulm"
+
+STAT1 <- FeaturePlot_scCustom(
+  seurat_pipeline_cluster,
+  features     = "STAT1",            # your module score metadata
+  colors_use   = viridis_plasma_dark_high,     # or your preferred gradient
+  na_color     = "grey90",                     # color for low module scores
+  na_cutoff    = 0.5)    + xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() + ggtitle('STAT1 activity')                         # everything ≤ 0 is grey; >0 uses gradient
+
+ggsave(filename = "extended_fig1e.pdf", path = FIGURES_DIR , plot = STAT1, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+STAT2 <- FeaturePlot_scCustom(
+  seurat_pipeline_cluster,
+  features     = "STAT2",            # your module score metadata
+  colors_use   = viridis_plasma_dark_high,     # or your preferred gradient
+  na_color     = "grey90",                     # color for low module scores
+  na_cutoff    = 0.5)    + xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() + ggtitle('STAT2 activity')                         # everything ≤ 0 is grey; >0 uses gradient
+
+ggsave(filename = "extended_fig1f.pdf", path = FIGURES_DIR , plot = STAT2, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 8
+
+```{r}
+go_results_neuro_cc <- enrichGO(gene = entrez_ids_neuro$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "CC",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+cc_neuro_dotplot <- dotplot(go_results_neuro_cc, showCategory = 15) 
+
+ggsave(filename = "supplementary_fig8.pdf", path = FIGURES_DIR , plot = cc_neuro_dotplot, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 9a
+
+```{r}
+DefaultAssay(seurat_pipeline_cluster) <- 'SCT'
+
+# Parameters - change gene and object name if needed
+gene <- "TNFRSF1A"   # <- replace with your gene name
+seu_obj <- seurat_pipeline_cluster             
+
+# Check gene presence
+if (!(gene %in% rownames(seu_obj))) {
+  stop(paste0("Gene '", gene, "' not found in the Seurat object."))
+}
+
+# Pull expression data
+expr_mat <- GetAssayData(seu_obj, assay = DefaultAssay(seu_obj), slot = "data")
+expr_vec <- as.numeric(expr_mat[gene, ])
+
+# Build dataframe with cluster identity and expression
+df <- data.frame(
+  cluster = as.character(Idents(seu_obj)),
+  expr = expr_vec,
+  stringsAsFactors = FALSE
+)
+
+# Convert cluster to numeric if possible (to ensure natural order)
+df <- df %>%
+  mutate(cluster_num = suppressWarnings(as.numeric(cluster))) %>%
+  mutate(cluster_num = ifelse(is.na(cluster_num), cluster, cluster))  # fallback for non-numeric
+
+# Summarise: percent of cells with expr > 0 per cluster
+summary_df <- df %>%
+  group_by(cluster, cluster_num) %>%
+  summarise(
+    n_cells = n(),
+    n_expressing = sum(expr > 0),
+    pct_expressing = 100 * (n_expressing / n_cells),
+    .groups = "drop"
+  ) %>%
+  arrange(as.numeric(cluster_num))
+
+# Ensure numeric ordering of x-axis
+summary_df$cluster <- factor(summary_df$cluster, levels = summary_df$cluster)
+
+# Plot
+p1 <- ggplot(summary_df, aes(x = cluster, y = pct_expressing)) +
+  geom_col(width = 0.7, fill = "#4682B4") +
+  geom_text(aes(label = paste0(round(pct_expressing, 1), "%")),
+            vjust = -0.3, size = 3) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, NA)) +
+  labs(
+    title = paste0("Percent of cells expressing ", gene, " per cluster"),
+    x = "Cluster",
+    y = "Percent expressing (%)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+ggsave(filename = "supplementary_fig9a.pdf", path = FIGURES_DIR , plot = p1, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 9b
+
+```{r}
+DefaultAssay(seurat_pipeline_cluster) <- 'SCT'
+
+# Parameters - change gene and object name if needed
+gene <- "TNFRSF1B"   # <- replace with your gene name
+seu_obj <- seurat_pipeline_cluster             
+
+# Check gene presence
+if (!(gene %in% rownames(seu_obj))) {
+  stop(paste0("Gene '", gene, "' not found in the Seurat object."))
+}
+
+# Pull expression data
+expr_mat <- GetAssayData(seu_obj, assay = DefaultAssay(seu_obj), slot = "data")
+expr_vec <- as.numeric(expr_mat[gene, ])
+
+# Build dataframe with cluster identity and expression
+df <- data.frame(
+  cluster = as.character(Idents(seu_obj)),
+  expr = expr_vec,
+  stringsAsFactors = FALSE
+)
+
+# Convert cluster to numeric if possible (to ensure natural order)
+df <- df %>%
+  mutate(cluster_num = suppressWarnings(as.numeric(cluster))) %>%
+  mutate(cluster_num = ifelse(is.na(cluster_num), cluster, cluster))  # fallback for non-numeric
+
+# Summarise: percent of cells with expr > 0 per cluster
+summary_df <- df %>%
+  group_by(cluster, cluster_num) %>%
+  summarise(
+    n_cells = n(),
+    n_expressing = sum(expr > 0),
+    pct_expressing = 100 * (n_expressing / n_cells),
+    .groups = "drop"
+  ) %>%
+  arrange(as.numeric(cluster_num))
+
+# Ensure numeric ordering of x-axis
+summary_df$cluster <- factor(summary_df$cluster, levels = summary_df$cluster)
+
+# Plot
+p2 <- ggplot(summary_df, aes(x = cluster, y = pct_expressing)) +
+  geom_col(width = 0.7, fill = "#4682B4") +
+  geom_text(aes(label = paste0(round(pct_expressing, 1), "%")),
+            vjust = -0.3, size = 3) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, NA)) +
+  labs(
+    title = paste0("Percent of cells expressing ", gene, " per cluster"),
+    x = "Cluster",
+    y = "Percent expressing (%)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+ggsave(filename = "supplementary_fig9b.pdf", path = FIGURES_DIR , plot = p2, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 9c
+
+```{r}
+DefaultAssay(seurat_pipeline_cluster) <- 'SCT'
+TNFR1_violin <- VlnPlot_scCustom(seurat_pipeline_cluster,features     = "TNFRSF1A", colors_use = colors_UMAP)
+ggsave(filename = "supplementary_fig9c.pdf", path = FIGURES_DIR , plot = TNFR1_violin, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 9d
+```{r}
+DefaultAssay(seurat_pipeline_cluster) <- 'SCT'
+TNFR2_violin <- VlnPlot_scCustom(seurat_pipeline_cluster,features     = "TNFRSF1B", colors_use = colors_UMAP)
+ggsave(filename = "supplementary_fig9d.pdf", path = FIGURES_DIR , plot = TNFR2_violin, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 9e
+
+```{r}
+TNFRSF1A_dotplot <- DotPlot(seurat_pipeline_cluster,features     = c("TNFRSF1A"))
+ggsave(filename = "supplementary_fig9e.pdf", path = FIGURES_DIR , plot = TNFRSF1A_dotplot, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 9f
+
+```{r}
+TNFRSF1B_dotplot <-DotPlot(seurat_pipeline_cluster,features     = c("TNFRSF1B"))
+ggsave(filename = "supplementary_fig9f.pdf", path = FIGURES_DIR , plot = TNFRSF1B_dotplot, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+```
+
+# supplementary Fig. 10a and c
+
+```{r}
+ensembl <- useMart("ensembl",dataset="hsapiens_gene_ensembl")
+
+apoptosis <- getBM(attributes=c('hgnc_symbol', 'reactome'),
+                   filters = 'reactome', 
+                   values = 'R-HSA-109581', mart = ensembl)
+
+apoptosis_genes <- unique(apoptosis$hgnc_symbol)
+```
+
+```{r}
+seurat_pipeline_cluster <- AddModuleScore(
+  seurat_pipeline_cluster,
+  features = list(apoptosis_genes),
+  pool = NULL,
+  nbin = 24,
+  ctrl = 100,
+  k = FALSE,
+  assay = NULL,
+  name = c("apoptosis_score"),
+  seed = 1,
+  search = TRUE,
+)
+
+apoptosis_Violinplot <- VlnPlot(seurat_pipeline_cluster,features = "apoptosis_score1")+ labs(title = "Apoptosis (R-HSA-109581)")
+
+ggsave(filename = "supplementary_fig10a.pdf", path = FIGURES_DIR , plot = apoptosis_Violinplot, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+```{r}
+seurat_pipeline_cluster$treatment <- factor(seurat_pipeline_cluster$treatment,
+                          levels = c("Control", "Low TNF", "High TNF"))
+
+apoptosis_score_1 <- VlnPlot(seurat_pipeline_cluster, features = "apoptosis_score1", group.by = "treatment") + 
+labs(title = "Apoptosis") + theme_minimal(base_size = 14)
+
+ggsave(filename = "supplementary_fig10c.pdf", path = FIGURES_DIR , plot = apoptosis_score_1, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 10b and d
+
+```{r}
+ensembl <- useMart("ensembl",dataset="hsapiens_gene_ensembl")
+
+apoptosis_2 <- getBM(attributes=c('hgnc_symbol', 'reactome'),
+                   filters = 'reactome', 
+                   values = 'R-HSA-5357801', mart = ensembl)
+
+apoptosis_genes_2 <- unique(apoptosis_2$hgnc_symbol)
+```
+
+```{r}
+seurat_pipeline_cluster <- AddModuleScore(
+  seurat_pipeline_cluster,
+  features = list(apoptosis_genes_2),
+  pool = NULL,
+  nbin = 24,
+  ctrl = 100,
+  k = FALSE,
+  assay = NULL,
+  name = c("apoptosis_score_2"),
+  seed = 1,
+  search = TRUE,
+)
+```
+
+```{r}
+programmed_cell_death_Violinplot_2 <- VlnPlot(seurat_pipeline_cluster,features = "apoptosis_score_21")+ labs(title = "Programmed Cell Death (R-HSA-5357801)")
+
+ggsave(filename = "supplementary_fig10b.pdf", path = FIGURES_DIR , plot = programmed_cell_death_Violinplot_2, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+apoptosis_score_2 <- VlnPlot(seurat_pipeline_cluster, features = "apoptosis_score_21", group.by = "treatment") + labs(title = "Programmed Cell Death") +theme_minimal(base_size = 14)
+
+ggsave(filename = "supplementary_fig10d.pdf", path = FIGURES_DIR , plot = apoptosis_score_2, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 11
+
+RGL
+```{r}
+RGL_CC <- enrichGO(gene = RGL_entrez$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "CC",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+RGL_CC_dotplot <- dotplot(RGL_CC, showCategory = 15)
+
+ggsave(filename = "supplementary_fig11_RGL.pdf", path = FIGURES_DIR , plot = RGL_CC_dotplot, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+IPC:
+
+```{r}
+IPC_CC <- enrichGO(gene = IPC_TNF_down$ENTREZID,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "ENTREZID",
+                       ont = "CC",       # Can be "BP", "MF", or "CC"
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2,
+                       readable = TRUE)
+
+IPC_CC_dotplot <- dotplot(IPC_CC, showCategory = 15)
+
+ggsave(filename = "supplementary_fig11_IPC.pdf", path = FIGURES_DIR , plot = IPC_CC_dotplot, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 12
+
+```{r}
+IFNAR1 <- FeaturePlot(seurat_pipeline_cluster, features = "IFNAR1", order = TRUE )+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() 
+
+ggsave(filename = "supplementary_fig12_ifnar1.pdf", path = FIGURES_DIR , plot = IFNAR1, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+IFNAR2 <- FeaturePlot(seurat_pipeline_cluster, features = "IFNAR2", order = TRUE)+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() 
+
+ggsave(filename = "supplementary_fig12_ifnar2.pdf", path = FIGURES_DIR , plot = IFNAR2, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+JAK1 <- FeaturePlot(seurat_pipeline_cluster, features = "JAK1", order = TRUE )+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() 
+
+ggsave(filename = "supplementary_fig12_jak1.pdf", path = FIGURES_DIR , plot = JAK1, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+TYK2 <- FeaturePlot(seurat_pipeline_cluster, features = "TYK2", order = TRUE )+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() 
+
+ggsave(filename = "supplementary_fig12_tyk2.pdf", path = FIGURES_DIR , plot = TYK2, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+STAT1 <- FeaturePlot(seurat_pipeline_cluster, features = "STAT1", order = TRUE )+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed()
+
+ggsave(filename = "supplementary_fig12_stat1.pdf", path = FIGURES_DIR , plot = STAT1, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+STAT2 <- FeaturePlot(seurat_pipeline_cluster, features = "STAT2", order = TRUE )+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() 
+
+ggsave(filename = "supplementary_fig12_stat2.pdf", path = FIGURES_DIR , plot = STAT2, width = 200, height =150, device = cairo_pdf, units = "mm")
+
+IRF9 <- FeaturePlot(seurat_pipeline_cluster, features = "IRF9", order = TRUE )+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed()
+
+ggsave(filename = "supplementary_fig12_irf9.pdf", path = FIGURES_DIR , plot = IRF9, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 14a
+
+```{r}
+
+CGAS <- FeaturePlot(seurat_pipeline_cluster, features = "CGAS", order = TRUE)+ xlab('UMAP1') +  ylab('UMAP2') + theme(plot.title = element_text(hjust = 0.5)) + coord_fixed() 
+
+ggsave(filename = "supplementary_fig14.pdf", path = FIGURES_DIR , plot = CGAS, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 19a
+
+```{r}
+# Parameters - change gene and object name if needed
+gene <- "CXCL10"   
+seu_obj <- seurat_pipeline_cluster             
+
+# Check gene presence
+if (!(gene %in% rownames(seu_obj))) {
+  stop(paste0("Gene '", gene, "' not found in the Seurat object."))
+}
+
+# Pull expression data
+expr_mat <- GetAssayData(seu_obj, assay = DefaultAssay(seu_obj), slot = "data")
+expr_vec <- as.numeric(expr_mat[gene, ])
+
+# Build dataframe with cluster identity and expression
+df <- data.frame(
+  cluster = as.character(Idents(seu_obj)),
+  expr = expr_vec,
+  stringsAsFactors = FALSE
+)
+
+# Convert cluster to numeric if possible (to ensure natural order)
+df <- df %>%
+  mutate(cluster_num = suppressWarnings(as.numeric(cluster))) %>%
+  mutate(cluster_num = ifelse(is.na(cluster_num), cluster, cluster))  # fallback for non-numeric
+
+# Summarise: percent of cells with expr > 0 per cluster
+summary_df <- df %>%
+  group_by(cluster, cluster_num) %>%
+  summarise(
+    n_cells = n(),
+    n_expressing = sum(expr > 0),
+    pct_expressing = 100 * (n_expressing / n_cells),
+    .groups = "drop"
+  ) %>%
+  arrange(as.numeric(cluster_num))
+
+# Ensure numeric ordering of x-axis
+summary_df$cluster <- factor(summary_df$cluster, levels = summary_df$cluster)
+
+# Plot
+CXCL10 <- ggplot(summary_df, aes(x = cluster, y = pct_expressing)) +
+  geom_col(width = 0.7, fill = "#4682B4") +
+  geom_text(aes(label = paste0(round(pct_expressing, 1), "%")),
+            vjust = -0.3, size = 3) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, NA)) +
+  labs(
+    title = paste0("Percent of cells expressing ", gene, " per cluster"),
+    x = "Cluster",
+    y = "Percent expressing (%)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+ggsave(filename = "supplementary_fig19a.pdf", path = FIGURES_DIR , plot = CXCL10, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 19b
+
+```{r}
+# Parameters - change gene and object name if needed
+gene <- "CXCL11"   
+seu_obj <- seurat_pipeline_cluster             
+
+# Check gene presence
+if (!(gene %in% rownames(seu_obj))) {
+  stop(paste0("Gene '", gene, "' not found in the Seurat object."))
+}
+
+# Pull expression data
+expr_mat <- GetAssayData(seu_obj, assay = DefaultAssay(seu_obj), slot = "data")
+expr_vec <- as.numeric(expr_mat[gene, ])
+
+# Build dataframe with cluster identity and expression
+df <- data.frame(
+  cluster = as.character(Idents(seu_obj)),
+  expr = expr_vec,
+  stringsAsFactors = FALSE
+)
+
+# Convert cluster to numeric if possible (to ensure natural order)
+df <- df %>%
+  mutate(cluster_num = suppressWarnings(as.numeric(cluster))) %>%
+  mutate(cluster_num = ifelse(is.na(cluster_num), cluster, cluster))  # fallback for non-numeric
+
+# Summarise: percent of cells with expr > 0 per cluster
+summary_df <- df %>%
+  group_by(cluster, cluster_num) %>%
+  summarise(
+    n_cells = n(),
+    n_expressing = sum(expr > 0),
+    pct_expressing = 100 * (n_expressing / n_cells),
+    .groups = "drop"
+  ) %>%
+  arrange(as.numeric(cluster_num))
+
+# Ensure numeric ordering of x-axis
+summary_df$cluster <- factor(summary_df$cluster, levels = summary_df$cluster)
+
+# Plot
+CXCL11 <- ggplot(summary_df, aes(x = cluster, y = pct_expressing)) +
+  geom_col(width = 0.7, fill = "#4682B4") +
+  geom_text(aes(label = paste0(round(pct_expressing, 1), "%")),
+            vjust = -0.3, size = 3) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, NA)) +
+  labs(
+    title = paste0("Percent of cells expressing ", gene, " per cluster"),
+    x = "Cluster",
+    y = "Percent expressing (%)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+ggsave(filename = "supplementary_fig19b.pdf", path = FIGURES_DIR , plot = CXCL11, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 19c
+
+```{r}
+CXCL10_violin <- VlnPlot_scCustom(seurat_pipeline_cluster,features     = "CXCL10", colors_use = colors_UMAP)
+
+ggsave(filename = "supplementary_fig19c.pdf", path = FIGURES_DIR , plot = CXCL10_violin, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+# supplementary Fig. 19d
+
+```{r}
+CXCL11_violin <- VlnPlot_scCustom(seurat_pipeline_cluster,features     = "CXCL11", colors_use = colors_UMAP)
+
+ggsave(filename = "supplementary_fig19d.pdf", path = FIGURES_DIR , plot = CXCL11_violin, width = 200, height =150, device = cairo_pdf, units = "mm")
+```
+
+
+
+

@@ -1,0 +1,5 @@
+library_id	experiment	cell_state	matrix_dir	multiplexing_notes
+Lib1	Proliferation_48h	HPCs	data/Lib1_Prolif_48h/filtered_feature_bc_matrix	"HTO-multiplexed: control, TNF0.1, TNF1"
+Lib2	Differentiation	HPCs_diff	data/Lib2_Diff_Ctrl/filtered_feature_bc_matrix	"HTO-multiplexed: control_7d, control_14d"
+Lib3	Differentiation	HPCs_diff	data/Lib3_Diff_TNF0.1/filtered_feature_bc_matrix	"HTO-multiplexed: TNF0.1_7d, TNF0.1_14d"
+Lib4	Differentiation	HPCs_diff	data/Lib4_Diff_TNF1/filtered_feature_bc_matrix	"HTO-multiplexed: TNF1_7d, TNF1_14d"

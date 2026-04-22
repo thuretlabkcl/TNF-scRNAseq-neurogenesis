@@ -192,3 +192,9 @@ These files are read and validated in scripts/00_setup.R.
 For questions about the data organization or code execution, please contact:
   sandrine.1.thuret@kcl.ac.uk
 
+  ## Citation
+
+If you use this code, please cite:
+
+Nissen et al. (2025) TNF-α induces type I IFN signalling to suppress neurogenesis and recruit T cells.
+

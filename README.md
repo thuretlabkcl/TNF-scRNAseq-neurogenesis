@@ -196,5 +196,5 @@ For questions about the data organization or code execution, please contact:
 
 If you use this code, please cite:
 
-Nissen et al. (2025) TNF-α induces type I IFN signalling to suppress neurogenesis and recruit T cells.
+Nissen et al. (2026) TNF-α induces type I IFN signalling to suppress neurogenesis and recruit T cells.
 
